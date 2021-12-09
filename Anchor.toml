@@ -1,0 +1,12 @@
+[programs.localnet]
+sentencer = "DTRyZqwwPn4oAfKaUejPxGAJVay8c6JwYryN7okPCaBg"
+
+[registry]
+url = "https://anchor.projectserum.com"
+
+[provider]
+cluster = "localnet"
+wallet = "/Users/alexgraham/.config/solana/id.json"
+
+[scripts]
+test = "yarn run mocha -t 1000000 tests/"
