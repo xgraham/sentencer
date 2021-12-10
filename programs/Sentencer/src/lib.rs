@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::AccountsClose;
 
 declare_id!("DTRyZqwwPn4oAfKaUejPxGAJVay8c6JwYryN7okPCaBg");
 
@@ -22,7 +23,7 @@ pub mod sentencer {
         sentence.body = body;
         sentence.listed = false;
         sentence.price = 0;
-        Ok(())
+        Ok(())sol
     }
 
     pub fn list_sentence(
@@ -44,6 +45,42 @@ pub mod sentencer {
         }
         Ok(())
     }
+    pub fn buy_sentence(
+        ctx: Context<BuySentence>,
+        _sentence_name: String,
+    ) -> ProgramResult {
+        let sentence = &mut ctx.accounts.sentence;
+        let user = &ctx.accounts.user;
+
+        let is_for_sale = &sentence.listed;
+        if !is_for_sale{
+            return Err(SentError::NotListed.into());
+
+        }
+        let is_correct_owner =
+            ctx.accounts.sentence_owner.to_account_info().key == &sentence.sentence_owner;
+        if !is_correct_owner{
+            return Err(SentError::WrongOwner.into())
+        }
+        let transfer_amount = sentence.price;
+        if transfer_amount > 0 {
+            invoke(
+                &transfer(
+                    user.to_account_info().key,
+                    ctx.accounts.sentence_owner.to_account_info().key,
+                    transfer_amount,
+                ),
+                &[
+                    user.to_account_info(),
+                    ctx.accounts.sentence_owner.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+            )?;
+            sentence.sentence_owner = *user.to_account_info().key;
+            sentence.listed = false;
+        }
+        Ok(())
+    }
 }
 
 
@@ -58,14 +95,14 @@ pub struct Sentencer {
 }
 
 #[derive(Accounts)]
-#[instruction(name: String, body: String, sentence_bump: u8)]
+#[instruction(name: String, body: String,sentence_bump: u8)]
 pub struct NewSentence<'info> {
     #[account(init, payer = user,
     space = Sentencer::space(& name, & body),
     seeds = [
-        b"sentencer",
-        user.to_account_info().key.as_ref(),
-        name_seed(& name)
+    b"sentencer",
+    user.to_account_info().key.as_ref(),
+    name_seed(& name)
     ],
     bump = sentence_bump)]
     pub sentence: Account<'info, Sentencer>,
@@ -79,9 +116,9 @@ pub struct ListSentence<'info> {
     #[account(mut,
     has_one = sentence_owner @ SentError::WrongOwner,
     seeds = [
-        b"sentencer",
-        user.to_account_info().key.as_ref(),
-        name_seed(& sentence_name)
+    b"sentencer",
+    user.to_account_info().key.as_ref(),
+    name_seed(& sentence_name)
     ],
     bump = sentence.bump)]
     pub sentence: Account<'info, Sentencer>,
@@ -89,12 +126,52 @@ pub struct ListSentence<'info> {
     pub user: Signer<'info>,
 }
 
+#[derive(Accounts)]
+#[instruction(sentence_name: String,)]
+pub struct BuySentence<'info> {
+    #[account(mut,
+    has_one = sentence_owner @ SentError::WrongOwner,
+    seeds = [
+    b"sentencer",
+    sentence_owner.to_account_info().key.as_ref(),
+    name_seed(& sentence_name)
+    ],
+    bump = sentence.bump)]
+    pub sentence: Account<'info, Sentencer>,
+    #[account(mut)]
+    pub sentence_owner: AccountInfo<'info>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+// #[derive(Accounts)]
+// #[instruction(sentence_name: String,)]
+// pub struct DeleteSentence<'info> {
+//     #[account(mut,
+//     has_one = sentence_owner @ SentError::WrongOwner,
+//     seeds = [
+//     b"sentencer",
+//     user.to_account_info().key.as_ref(),
+//     name_seed(& sentence_name)
+//     ],
+//     bump = sentence.bump)]
+//     pub sentence: Account<'info, Sentencer>,
+//     pub sentence_owner: AccountInfo<'info>,
+//     pub user: Signer<'info>,
+// }
+
+
 #[error]
 pub enum SentError {
     #[msg("This listing belongs to someone else")]
     WrongOwner,
     #[msg("Specified item creator does not match the pubkey in the item")]
     WrongItemCreator,
+    #[msg("Price too low")]
+    PriceError,
+    #[msg("Sentnece is not for sale")]
+    NotListed,
 }
 
 impl Sentencer {
@@ -111,6 +188,7 @@ impl Sentencer {
             8
     }
 }
+
 
 
 fn name_seed(name: &str) -> &[u8] {

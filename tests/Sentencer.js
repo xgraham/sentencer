@@ -30,7 +30,9 @@ describe('Sentencer', () => {
             provider: userProvider,
         };
     }
-
+    function expectBalance(actual, expected, message, slack=20000) {
+        expect(actual, message).within(expected - slack, expected + slack)
+    }
     function createUsers(numUsers) {
         let promises = [];
         for (let i = 0; i < numUsers; i++) {
@@ -79,12 +81,39 @@ describe('Sentencer', () => {
 
         let program = programForUser(owner);
 
-        await program.rpc.listSentence(name,new anchor.BN(price), {
+        await program.rpc.listSentence(name, new anchor.BN(price), {
             accounts: {
                 sentence: old_sentence.publicKey,
                 sentenceOwner: owner.key.publicKey,
                 user: owner.key.publicKey,
             },
+        })
+
+        let sentence = await program.account.sentencer.fetch(sentenceAccount);
+        return {publicKey: sentenceAccount, data: sentence};
+    }
+
+    async function buySentence(sent, owner_key, buyer, name) {
+
+        const [sentenceAccount, bump] = await anchor.web3.PublicKey.findProgramAddress([
+            "sentencer",
+            owner_key.toBytes(),
+            name.slice(0, 32)
+        ], mainProgram.programId);
+
+
+        let program = programForUser(buyer);
+
+        await program.rpc.buySentence(name, {
+            accounts: {
+                sentence: sent.publicKey,
+                sentenceOwner: owner_key,
+                user: buyer.key.publicKey,
+                systemProgram: SystemProgram.programId,
+            },
+            signers: [
+                buyer.key,
+            ]
         })
 
         let sentence = await program.account.sentencer.fetch(sentenceAccount);
@@ -110,11 +139,51 @@ describe('Sentencer', () => {
 
             expect(sent.data.sentenceOwner.toString(), ' owner is set').equals(owner.key.publicKey.toString());
 
-            let updated = await listSentence(sent,owner, 'A sentence', price);
+            let updated = await listSentence(sent, owner, 'A sentence', price);
             expect(updated.data.listed, 'is listed').equals(true);
             expect(updated.data.price.toString(), 'has price').equals(price.toString())
         });
 
+        // it('fails to list because lister is not the user', async () => {
+        //
+        //     const price = 5 * LAMPORTS_PER_SOL;
+        //     const owner = await createUser();
+        //     const not_owner = await createUser();
+        //     let sent = await createSentence(owner, 'A sentence2', 'Hello World');
+        //
+        //     expect(sent.data.sentenceOwner.toString(), ' owner is set').equals(owner.key.publicKey.toString());
+        //     try {
+        //         await listSentence(sent, not_owner, 'A sentence2', price);
+        //         expect.fail('Finish by other user should have failed');
+        //     } catch (e) {
+        //         expect(e.toString(), 'error message').equals('A seeds constraint was violated');
+        //     }
+        // });
+
+        it('user buys sentence from another user', async () => {
+
+            const price = 5 * LAMPORTS_PER_SOL;
+            const owner = await createUser();
+            const buyer = await createUser();
+
+            let sent = await createSentence(owner, 'A sentence', 'Hello World');
+            expect(sent.data.sentenceOwner.toString(), ' owner is set').equals(owner.key.publicKey.toString());
+
+            let updated = await listSentence(sent, owner, 'A sentence', price);
+            expect(updated.data.listed, 'is listed').equals(true);
+            expect(updated.data.price.toString(), 'has price').equals(price.toString())
+
+            const balanceBeforeSale = await getAccountBalance(owner.key.publicKey);
+            let bought = await buySentence(updated,owner.key.publicKey,buyer,"A sentence")
+            const balanceAfterSale = await getAccountBalance(owner.key.publicKey);
+            console.log("before:"+balanceBeforeSale/LAMPORTS_PER_SOL+" after:"+balanceAfterSale/LAMPORTS_PER_SOL)
+            const slack =0.002
+
+            expect((balanceBeforeSale+price)/LAMPORTS_PER_SOL,'seller wallet increased')
+                .within((balanceAfterSale/LAMPORTS_PER_SOL) - slack, (balanceAfterSale/LAMPORTS_PER_SOL) + slack)
+            expect(bought.data.sentenceOwner.toString(), ' owner is set').equals(buyer.key.publicKey.toString());
+            expect(bought.data.listed,'delisted').equals(false)
+        });
 
         //end inner describe
     });
