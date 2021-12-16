@@ -6,3 +6,7 @@ target
 node_modules
 migrations
 tests
+
+test-ledger/
+
+app/sentencer/package-lock.json

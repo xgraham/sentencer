@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
-use anchor_lang::AccountsClose;
+//use anchor_lang::AccountsClose;
 
-declare_id!("DTRyZqwwPn4oAfKaUejPxGAJVay8c6JwYryN7okPCaBg");
+declare_id!("7BwSQ3qggER6bG9xHeJq4Nv61J65c3KanbiawPta4ZpW");
 
 #[program]
 pub mod sentencer {
@@ -23,7 +23,8 @@ pub mod sentencer {
         sentence.body = body;
         sentence.listed = false;
         sentence.price = 0;
-        Ok(())sol
+        sentence.creator = sentence.sentence_owner;
+        Ok(())
     }
 
     pub fn list_sentence(
@@ -92,10 +93,11 @@ pub struct Sentencer {
     pub body: String,
     pub price: u64,
     pub listed: bool,
+    pub creator: Pubkey,
 }
 
 #[derive(Accounts)]
-#[instruction(name: String, body: String,sentence_bump: u8)]
+#[instruction(name: String, body: String, sentence_bump: u8)]
 pub struct NewSentence<'info> {
     #[account(init, payer = user,
     space = Sentencer::space(& name, & body),
@@ -117,8 +119,8 @@ pub struct ListSentence<'info> {
     has_one = sentence_owner @ SentError::WrongOwner,
     seeds = [
     b"sentencer",
-    user.to_account_info().key.as_ref(),
-    name_seed(& sentence_name)
+    sentence.creator.as_ref(),
+    name_seed(& sentence.name)
     ],
     bump = sentence.bump)]
     pub sentence: Account<'info, Sentencer>,
@@ -133,8 +135,8 @@ pub struct BuySentence<'info> {
     has_one = sentence_owner @ SentError::WrongOwner,
     seeds = [
     b"sentencer",
-    sentence_owner.to_account_info().key.as_ref(),
-    name_seed(& sentence_name)
+    sentence.creator.as_ref(),
+    name_seed(& sentence.name)
     ],
     bump = sentence.bump)]
     pub sentence: Account<'info, Sentencer>,
@@ -152,7 +154,7 @@ pub struct BuySentence<'info> {
 //     has_one = sentence_owner @ SentError::WrongOwner,
 //     seeds = [
 //     b"sentencer",
-//     user.to_account_info().key.as_ref(),
+//     creator.to_account_info().key.as_ref(),
 //     name_seed(& sentence_name)
 //     ],
 //     bump = sentence.bump)]
@@ -175,13 +177,15 @@ pub enum SentError {
 }
 
 impl Sentencer {
-    fn space(name: &str, body: &str) -> usize {
-        // discriminator + owner pubkey + bump +
-        8 + 32 + 1 + 2 +
+    fn space(name: &str ,body: &str, ) -> usize {
+        // discriminator + owner pubkey + creator pub key + bump +
+        8 + 32  + 1 + 2 +
             // name string
             4 + name.len() +
             // body string
             4 + body.len() +
+            // creator key
+            8 + 32 +
             //listed bool
             2 +
             //u64

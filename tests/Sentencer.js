@@ -1,7 +1,9 @@
 const anchor = require('@project-serum/anchor');
-const BN = require('bn.js');
+const {Program, getProvider} = require("@project-serum/anchor");
+const idl = require("../target/idl/sentencer.json");
 const expect = require('chai').expect;
-const {SystemProgram, LAMPORTS_PER_SOL} = anchor.web3;
+const {SystemProgram, LAMPORTS_PER_SOL,PublicKey} = anchor.web3;
+
 
 describe('Sentencer', () => {
 
@@ -30,9 +32,11 @@ describe('Sentencer', () => {
             provider: userProvider,
         };
     }
-    function expectBalance(actual, expected, message, slack=20000) {
+
+    function expectBalance(actual, expected, message, slack = 20000) {
         expect(actual, message).within(expected - slack, expected + slack)
     }
+
     function createUsers(numUsers) {
         let promises = [];
         for (let i = 0; i < numUsers; i++) {
@@ -52,6 +56,7 @@ describe('Sentencer', () => {
     }
 
     async function createSentence(owner, name, body) {
+        console.log( owner.key.publicKey.toBytes())
         const [sentenceAccount, bump] = await anchor.web3.PublicKey.findProgramAddress([
             "sentencer",
             owner.key.publicKey.toBytes(),
@@ -85,6 +90,7 @@ describe('Sentencer', () => {
             accounts: {
                 sentence: old_sentence.publicKey,
                 sentenceOwner: owner.key.publicKey,
+                creator: owner.key.publicKey,
                 user: owner.key.publicKey,
             },
         })
@@ -108,6 +114,7 @@ describe('Sentencer', () => {
             accounts: {
                 sentence: sent.publicKey,
                 sentenceOwner: owner_key,
+                creator: owner_key,
                 user: buyer.key.publicKey,
                 systemProgram: SystemProgram.programId,
             },
@@ -174,17 +181,25 @@ describe('Sentencer', () => {
             expect(updated.data.price.toString(), 'has price').equals(price.toString())
 
             const balanceBeforeSale = await getAccountBalance(owner.key.publicKey);
-            let bought = await buySentence(updated,owner.key.publicKey,buyer,"A sentence")
+            let bought = await buySentence(updated, owner.key.publicKey, buyer, "A sentence")
             const balanceAfterSale = await getAccountBalance(owner.key.publicKey);
-            console.log("before:"+balanceBeforeSale/LAMPORTS_PER_SOL+" after:"+balanceAfterSale/LAMPORTS_PER_SOL)
-            const slack =0.002
+            console.log("before:" + balanceBeforeSale / LAMPORTS_PER_SOL + " after:" + balanceAfterSale / LAMPORTS_PER_SOL)
+            const slack = 0.002
 
-            expect((balanceBeforeSale+price)/LAMPORTS_PER_SOL,'seller wallet increased')
-                .within((balanceAfterSale/LAMPORTS_PER_SOL) - slack, (balanceAfterSale/LAMPORTS_PER_SOL) + slack)
+            expect((balanceBeforeSale + price) / LAMPORTS_PER_SOL, 'seller wallet increased')
+                .within((balanceAfterSale / LAMPORTS_PER_SOL) - slack, (balanceAfterSale / LAMPORTS_PER_SOL) + slack)
             expect(bought.data.sentenceOwner.toString(), ' owner is set').equals(buyer.key.publicKey.toString());
-            expect(bought.data.listed,'delisted').equals(false)
+            expect(bought.data.listed, 'delisted').equals(false)
         });
 
+        it('can fetch all tweets', async () => {
+            const programID = new PublicKey(idl.metadata.address);
+            const user = createUser();
+            const program = programForUser(user)
+
+            const accounts = await program.account.sentencer.all();
+            //expect(sentenceAccounts.length, 'found accounts').gt(0);
+        });
         //end inner describe
     });
 
